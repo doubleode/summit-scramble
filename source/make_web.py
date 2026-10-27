@@ -161,7 +161,7 @@ s = s.replace("where:'CLAUDE',date:''}", "where:'GITHUB',date:'" + stamp + "'}",
 
 # ---------------------------------------------------------------- menu: join by code / link
 a = s.index("  const on=!!ROOM;\n  btn(16,46,136,20,'LOCAL GAME'")
-b = s.index("  TX(IS_TOUCH?'TAP A BUTTON TO PLAY'", a)
+b = s.index("  // ---- menu footer", a)
 s = s[:a] + r"""  if(showFull())btn(4,4,52,11,'FULL SCREEN',goFull,false,false,3.2);
   btn(16,46,136,20,'LOCAL GAME',()=>{NET='off';resetSlots();state='lobby';SFX.blip();},false,false,6);
   TX('SHARE ONE SCREEN WITH KEYBOARDS',84,69,3,'#9aa6e8','center',false);TX('AND GAMEPADS, PLUS CPU PLAYERS',84,74,3,'#9aa6e8','center',false);
