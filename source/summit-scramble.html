@@ -311,7 +311,7 @@ function stageChunk(st){const rows=st.rows.map(r=>r.slice()),cv=st.cv.map(r=>r.s
   return {w,rows,cv};}
 
 // ============================================================ audio
-const BUILD={v:24,where:'CLAUDE',date:''};
+const BUILD={v:25,where:'CLAUDE',date:''};
 let AC=null,muted=false;
 function audioInit(){if(!AC){try{AC=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(AC&&AC.state==='suspended')AC.resume().catch(()=>{});}
 function tone(f0,f1,dur,type='square',vol=0.04,delay=0){if(!AC||muted)return;const t=AC.currentTime+delay;const o=AC.createOscillator(),gn=AC.createGain();o.type=type;o.frequency.setValueAtTime(f0,t);o.frequency.exponentialRampToValueAtTime(Math.max(20,f1),t+dur);gn.gain.setValueAtTime(vol,t);gn.gain.exponentialRampToValueAtTime(0.0001,t+dur);o.connect(gn).connect(AC.destination);o.start(t);o.stop(t+dur+0.02);}
@@ -626,7 +626,7 @@ function buildSnap(){
   {const cs=customStageFor(OPT.world);if(cs)s.sn=cs.name||'MY STAGE';}
   if(state!=='lobby'&&levelSeed){
     Object.assign(s,{seed:levelSeed,wt:+wt.toFixed(2),it:+introT.toFixed(2),ht:+hurryT.toFixed(1),rt:+resultsT.toFixed(1),tm:+roundT.toFixed(1),cam:Math.round(camX)});
-    s.pl=players.map(p=>{return [p.slot,Math.round(p.x*10),Math.round(p.y*10),Math.round(p.vx),Math.round(p.vy),pbits(p),p.coins,p.total,Math.max(0,Math.round(p.deadT*10)),p.place,p.roundScore|0,p.bonus|0,Math.max(0,Math.round(p.stun*10)),Math.round(num(p.stam,1)*10),p.spawnSeq|0,p.ctl==='cpu'?1:0,Math.round(num(p.ftime)*10),Math.round(num(p.best)*10),p.hat|0,p.nextHat|0,p.pole|0];});
+    s.pl=players.map(p=>{return [p.slot,Math.round(p.x*10),Math.round(p.y*10),Math.round(p.vx),Math.round(p.vy),pbits(p),p.coins,p.total,Math.max(0,Math.round(p.deadT*10)),p.place,p.roundScore|0,p.bonus|0,Math.max(0,Math.round(p.stun*10)),Math.round(num(p.stam,1)*10),p.spawnSeq|0,p.ctl==='cpu'?1:0,Math.round(num(p.ftime)*10),Math.round(num(p.best)*10),p.hat|0,p.nextHat|0,p.pole|0,(p.hats||[]).join('')];});
     s.en=[];for(const e of enemies)s.en.push(Math.round(e.x),Math.round(e.y),(e.dead?1:0)|(e.dead&&e.deadT>0?2:0)|(e.dir>0?4:0)|(e.active?8:0));
     s.cf=fixedCoins.map(c=>c.taken?1:0).join('');
     s.dc=dropped.slice(0,24).map(c=>[Math.round(c.x),Math.round(c.y),c.life<2?1:0]);
@@ -712,7 +712,7 @@ const MOON=[];for(let y=-9;y<=9;y++)for(let x=-9;x<=9;x++){if(x*x+y*y<=81&&(x-4)
 const TIMERS=['invuln','stun','shoveCd','shoveT','stompImm','dropT','wallLock'];
 
 function makePlayer(i,ctl){const s=slots[i],col=COLORS[s.color][1];
-  return{slot:i,ctl,dev:s.dev||null,peer:s.peer||null,by:s.by||'',color:col,pal:makePal(col),total:0,w:6,h:10,sc:0,dc:0,djc:0,wjc:0,spawnSeq:0,best:0,
+  return{hats:[],slot:i,ctl,dev:s.dev||null,peer:s.peer||null,by:s.by||'',color:col,pal:makePal(col),total:0,w:6,h:10,sc:0,dc:0,djc:0,wjc:0,spawnSeq:0,best:0,
     inp:{x:0,jump:false,down:false,act:false,run:false,jp:false,ap:false},prevJ:false,prevA:false,
     ai:{helpful:rnd(0.45,0.95),aggro:rnd(0.15,0.85),done:{},jh:0,lastX:0,stuckT:0,back:0,plate:null,waitT:0,target:null,sprT:0}};}
 function resetPlayer(p,i){Object.assign(p,{x:14+i*11,y:144-p.h,vx:0,vy:0,face:1,onGround:false,groundRef:null,coyote:0,jumpBuf:0,varJump:false,crouch:false,
@@ -918,7 +918,8 @@ function endRound(){if(state!=='play')return;state='results';resultsT=0;
   standings=players.slice().sort((a,b)=>b.total-a.total||b.roundScore-a.roundScore);
   // hats for next round: crown for this round's winner, dunce cap for last place when 3+ play
   const rk=players.slice().sort((a,b)=>b.roundScore-a.roundScore||(a.place||99)-(b.place||99)||num(a.ftime,999)-num(b.ftime,999));
-  players.forEach(p=>p.nextHat=0);if(rk.length>1){rk[0].nextHat=1;rk[rk.length-1].nextHat=2;}}
+  players.forEach(p=>p.nextHat=0);if(rk.length>1){rk[0].nextHat=1;rk[rk.length-1].nextHat=2;}
+  if(OPT.hats&&!ED.testing)players.forEach(p=>{if(p.nextHat)(p.hats=p.hats||[]).push(p.nextHat);});}
 
 // ============================================================ client mirror
 function applySnap(s){
@@ -949,7 +950,7 @@ function applySnap(s){
     const bits=num(a[5]);const coins=num(a[6]);
     if(p.ctl==='local'&&coins>p.coins&&prev==='play')SFX.coin();
     p.coins=coins;p.total=num(a[7]);p.deadT=num(a[8])/10;p.place=num(a[9]);p.roundScore=num(a[10]);p.bonus=num(a[11]);p.isCpu=!!a[15];
-    p.ftime=num(a[16])/10;p.best=num(a[17])/10;p.hat=num(a[18]);p.nextHat=num(a[19]);p.pole=num(a[20]);
+    p.ftime=num(a[16])/10;p.best=num(a[17])/10;p.hat=num(a[18]);p.nextHat=num(a[19]);p.pole=num(a[20]);p.hats=typeof a[21]==='string'?[...a[21].slice(0,200)].map(Number).filter(k=>k===1||k===2):[];
     if(p.ctl==='mirror'){p.x=num(a[1])/10;p.y=num(a[2])/10;p.vx=num(a[3]);p.vy=num(a[4]);p.onGround=!!(bits&1);p.crouch=!!(bits&2);p.shoveT=(bits&4)?0.1:0;p.face=(bits&8)?1:-1;
       p.wallSliding=!!(bits&16);p.sprinting=!!(bits&32);if(p.dead&&!(bits&64))p.rx=null;p.dead=!!(bits&64);p.finished=!!(bits&128);p.invuln=(bits&256)?1:0;p.stun=num(a[12])/10;p.stam=num(a[13],10)/10;
       p.sliding=!!(bits&4096);if((bits&1024)&&TG-(p.djT||-9)>0.3)p.djT=TG;}
@@ -1375,13 +1376,19 @@ const HATS={1:{rows:["..y..y..","..yyyy..","..yrby.."],pal:{y:'#ffd23f',r:'#ee46
 const HAT_SINK=1;  // rows of the hat that overlap the top of the hood so it sits ON the head
 const headCache=new Map();
 function headOf(fr){let h=headCache.get(fr);if(h)return h;let row=0,cx=3.5;for(let r=0;r<fr.length;r++){const cs=[];for(let c=0;c<fr[r].length;c++)if(fr[r][c]==='h'||fr[r][c]==='k')cs.push(c);if(cs.length){row=r;cx=(cs[0]+cs[cs.length-1])/2;break;}}h={row,cx};headCache.set(fr,h);return h;}
-function hatH(p){return (OPT.hats&&p.hat&&HATS[p.hat])?HATS[p.hat].rows.length-HAT_SINK:0;}
+const hatRows=k=>HATS[k].rows.length;
+function stackRows(list){let h=0;for(const k of list)h+=hatRows(k)-HAT_SINK;return h;}
+// hats stack: the first sits on the hood, each next one sits on the one below (tall stacks sway when running)
+function drawStack(list,fr,x,y,flip,sc=1,sway=false){if(!list||!list.length)return;const hd=headOf(fr),dx=Math.round(hd.cx-3.5);let top=y+hd.row*sc;
+  list.forEach((k,i)=>{const sw=sway?Math.round(Math.sin(TG*4+i*0.8)*Math.min(2,i*0.4))*sc:0;const hy=top-(hatRows(k)-HAT_SINK)*sc;spr(HATS[k].rows,x+(flip?-dx:dx)*sc+sw,hy,HATS[k].pal,flip,sc);top=hy;});}
+function stackTop(list,fr,x,y,sc,kind,flip=false){const hd=headOf(fr),dx=Math.round(hd.cx-3.5);return {x:x+(flip?-dx:dx)*sc,y:y+hd.row*sc-stackRows(list||[])*sc-(hatRows(kind)-HAT_SINK)*sc};}
+function hatH(p){return (OPT.hats&&p.hats&&p.hats.length)?stackRows(p.hats):0;}
 function drawHat(kind,fr,x,y,flip,sc=1){const ht=HATS[kind];if(!ht)return;const hd=headOf(fr);const dx=Math.round(hd.cx-3.5);
   const hx=x+(flip?-dx:dx)*sc,hy=y+(hd.row-ht.rows.length+HAT_SINK)*sc;
   spr(ht.rows,hx,hy,ht.pal,flip,sc);}
 function drawPlayer(p){const fr=playerFrame(p),x=Math.round(p.rx)-1,y=Math.round(p.ry);
   spr(fr,x,y,p.pal,p.face<0);
-  if(OPT.hats&&p.hat)drawHat(p.hat,fr,x,y,p.face<0);
+  if(OPT.hats&&p.hats&&p.hats.length)drawStack(p.hats,fr,x,y,p.face<0,1,p.hats.length>2&&Math.abs(p.vx)>10);
   if(p.stun>0){const a=TG*10;R(x+4+Math.cos(a)*4,y-2+Math.sin(a)*1.5,1,1,'#ffd23f');R(x+4+Math.cos(a+3.14)*4,y-2+Math.sin(a+3.14)*1.5,1,1,'#ffffff');}
   const hh=hatH(p);R(x+3,y-3-hh,2,1,p.color);R(x+3.5,y-2-hh,1,1,p.color);
   if(OPT.sprint&&num(p.stam,1)<0.99&&!p.finished){R(x,y+11,8,2,'#07081c');R(x,y+11,Math.max(1,Math.round(8*p.stam)),1,p.stam<0.25?'#ff6b6b':'#7cf09a');}}
@@ -1472,13 +1479,17 @@ function dizzy(x,y){for(let i=0;i<3;i++){const a=TG*5+i*2.1;R(x+Math.cos(a)*8,y+
 function drawLo(lo,o={}){const fr=o.fr||SPR.idle,flip=o.flip!==false,pv=o.pv||0;
   g.save();g.translate(Math.round(LO.x+8+(o.dx||0)+pv),Math.round(LO.feet+(o.dy||0)));if(o.rot)g.rotate(o.rot);if(o.sx||o.sy)g.scale(o.sx||1,o.sy||1);
   spr(fr,-8-pv,-20,lo.pal,flip,2);
-  if(o.cap){const hp=hatPos(2,fr,-8-pv,-20,2);spr(HATS[2].rows,hp.x,hp.y,HATS[2].pal,flip,2);}
+  drawStack(o.cap?LSTACK.concat([2]):LSTACK,fr,-8-pv,-20,flip,2);
   if(o.splats)for(const [sx,sy] of o.splats){R(-8-pv+sx,-20+sy,3,2,'#d8343f');R(-8-pv+sx+1,-20+sy-1,1,1,'#ff6b6b');R(-8-pv+sx-1,-20+sy+2,1,1,'#b52f42');}
   g.restore();}
-const loHead=()=>hatPos(2,SPR.idle,LO.x,LO.feet-20,2);
+let WSTACK=[],LSTACK=[];
+const loHead=()=>stackTop(LSTACK,SPR.idle,LO.x,LO.feet-20,2,2);
+function fitScale(need,avail,steps){for(const f of steps)if(need*f<=avail)return f;return steps[steps.length-1];}
 const FALLEN={rot:Math.PI/2,pv:8,fr:SPR.stun};   // lying flat, toppled over to the right
 // ---- the card
 function renderCongrats(w,t){const crown=OPT.hats,lo=roundLoser(),cv=crownVar(),dv=dunceVar();
+  WSTACK=crown&&w.hats&&w.hats[w.hats.length-1]===1?w.hats.slice(0,-1):(w.hats||[]);LSTACK=lo&&lo.hats&&lo.hats[lo.hats.length-1]===2?lo.hats.slice(0,-1):((lo&&lo.hats)||[]);
+  const fw=fitScale((10+stackRows(WSTACK)+3)*BIG.sc+4,58,[1,0.75,0.5,0.25]),fl=fitScale((10+stackRows(LSTACK)+7)*2+6,86,[1,0.5]);
   g.fillStyle='rgba(7,8,28,0.55)';g.fillRect(0,0,W,H);
   panel(60,14,200,150);
   g.save();g.beginPath();g.rect(61,15,198,148);g.clip();
@@ -1489,9 +1500,9 @@ function renderCongrats(w,t){const crown=OPT.hats,lo=roundLoser(),cv=crownVar(),
   if(lo&&(dv===0||dv===4)&&t>1.12&&t<1.42)fr=SPR.shove;
   const wy=BIG.y+bob+dy;
   if(crown)crownBack(cv,t);
-  spr(fr,BIG.x,wy,w.pal,false,BIG.sc);
-  if(crown)crownFront(cv,t,hatPos(1,fr,BIG.x,wy,BIG.sc),bob);
-  if(lo)dunceAnim(dv,t,lo);
+  const zoom=(f,px,py,fn)=>{if(f===1){fn();return;}g.save();g.translate(px,py);g.scale(f,f);g.translate(-px,-py);fn();g.restore();};
+  zoom(fw,BIG.x+16,BIG.y+40,()=>{spr(fr,BIG.x,wy,w.pal,false,BIG.sc);drawStack(WSTACK,fr,BIG.x,wy,false,BIG.sc);if(crown)crownFront(cv,t,stackTop(WSTACK,fr,BIG.x,wy,BIG.sc,1),bob);});
+  if(lo)zoom(fl,LO.x+8,LO.feet,()=>dunceAnim(dv,t,lo));
   g.restore();
   const a=clamp(t*3,0,1);g.globalAlpha=a;
   TX('CONGRATS!',W/2,22,10,'#ffd23f','center');
@@ -1537,7 +1548,7 @@ function crownFront(v,t,hp,bob){const ring=L=>sparkRing(hp.x+16,hp.y+6,(t-L)*1.6
       else if(t>=1.0){const k=(t-1.0)/0.6;if(k<1){const x=hp.x+16+k*80,y=hp.y-30-k*60;bird(x-15,y,f);bird(x+9,y-4,f);}drawCrown(hp.x,lerp(hp.y-22,hp.y,easeIn((t-1.0)/0.15)));}
       ring(1.15);break;}
     case 8:{if(t>0.4&&t<1.15){const u=easeIn((t-0.4)/0.75),p=rainbowPt(u);drawCrownRot(p.x,p.y,4,0);}else if(t>=1.15)drawCrown(hp.x,hp.y);ring(1.15);break;}   // rainbow slide
-    case 9:{const rest=hatPos(1,SPR.idle,BIG.x,BIG.y+bob,4);                                                     // jump and grab
+    case 9:{const rest=stackTop(WSTACK,SPR.idle,BIG.x,BIG.y+bob,4,1);                                                     // jump and grab
       if(t>0.2&&t<0.75){g.globalAlpha=clamp((t-0.2)*4,0,1);drawCrown(rest.x,rest.y-36+Math.round(Math.sin(t*8)));g.globalAlpha=1;sparkRing(rest.x+16,rest.y-30,((t-0.2)%0.3)*3,6,'#fff4b0','#ffd23f',12,8);}
       else if(t>=0.75)drawCrown(hp.x,hp.y);
       ring(0.75);if(t>1.05&&t<1.4){const e=(t-1.05)*3;for(const s of [-1,1])R(BIG.x+16+s*(14+e*10),BIG.y+38-e*4,3,2,'#c9d1f5');}break;}}}
@@ -1609,20 +1620,22 @@ function renderResults(){const rw=roundWinner();if(rw&&resultsT<congratsT()){ren
   panel(24,18,272,146);TX('ROUND '+roundNo+' RESULTS',W/2,26,8,'#eef0ff','center');
   const cols=[[114,'COINS'],[146,'TIME'],[184,'FINISH'],[216,'POLE'],[245,'ROUND'],[274,'TOTAL']];
   cols.forEach(([x,t])=>TX(t,x,42,3.5,'#9aa6e8','center'));
-  standings.forEach((p,i)=>{const y=52+i*15;if(i===0)R(30,y-2,260,14,'rgba(255,210,63,0.10)');spr(SPR.idle,36,y,p.pal);{const flying=p===rw&&resultsT<congratsT()+FLY_T;if(OPT.hats&&p.nextHat&&!flying&&(roundNo<rounds||p.nextHat===1))drawHat(p.nextHat,SPR.idle,36,y,false);
+  standings.forEach((p,i)=>{const y=52+i*15;if(i===0)R(30,y-2,260,14,'rgba(255,210,63,0.10)');spr(SPR.idle,36,y,p.pal);{const flying=p===rw&&resultsT<congratsT()+FLY_T,all=p.hats||[],shown=(flying&&all[all.length-1]===1?all.slice(0,-1):all).slice(-2);
+      if(OPT.hats){drawStack(shown,SPR.idle,36,y,false,1);if(all.length>2)TX('+'+(all.length-2),34,y+1,2.6,'#ffd23f','right',false);}
       if(p===rw&&OPT.hats){const lt=resultsT-(congratsT()+FLY_T);if(lt>=0&&lt<0.6)for(let k=0;k<8;k++){const a=k/8*Math.PI*2;R(39+Math.cos(a)*lt*20,y-2+Math.sin(a)*lt*14,1,1,'#ffd23f');}}}TX(labelOf(p)+((p.ctl==='cpu'||p.isCpu)?' CPU':''),47,y+2,4.5,p.color);
     TX(p.coins,114,y+2,4.5,'#eef0ff','center');TX(p.place?fmtT(p.ftime):'DNF',146,y+2,4.5,p.place?'#eef0ff':'#5d66a8','center');
     TX(p.place?ord(p.place)+' +'+p.bonus:'--',184,y+2,4.5,p.place?'#ffd23f':'#5d66a8','center');TX(p.place?'+'+(p.pole|0):'--',216,y+2,4.5,p.place?(p.pole>=5?'#ffd23f':'#eef0ff'):'#5d66a8','center');
     TX('+'+p.roundScore,245,y+2,4.5,'#c9d1f5','center');TX(p.total,274,y+2,5,'#eef0ff','center');});
   if(rw&&OPT.hats&&resultsT<congratsT()+FLY_T){const i=standings.indexOf(rw);if(i>=0){const k=easeOut((resultsT-congratsT())/FLY_T);
-      const fr=SPR.idle,from=hatPos(1,fr,BIG.x,BIG.y,BIG.sc),to=hatPos(1,fr,36,52+i*15,1);const sc=Math.max(1,Math.round(BIG.sc+(1-BIG.sc)*k));
+      const fr=SPR.idle,all=rw.hats||[],below=(all[all.length-1]===1?all.slice(0,-1):all).slice(-1),from=stackTop(WSTACK,fr,BIG.x,BIG.y,BIG.sc,1),to=stackTop(below,fr,36,52+i*15,1,1);const sc=Math.max(1,Math.round(BIG.sc+(1-BIG.sc)*k));
       const x=from.x+(to.x-from.x)*k,y=from.y+(to.y-from.y)*k-Math.sin(k*Math.PI)*26;spr(HATS[1].rows,Math.round(x),Math.round(y),HATS[1].pal,false,sc);}}
   const PJ=IS_TOUCH?'TAP':'PRESS JUMP';const msg=NET==='client'?'WAITING FOR THE HOST':(roundNo>=rounds?PJ+' FOR FINAL STANDINGS':PJ+' FOR NEXT ROUND');
-  if(OPT.hats&&roundNo<rounds&&players.length>1)TX('NEXT ROUND: CROWN FOR THE WINNER, DUNCE CAP FOR LAST',W/2,142,3,'#9aa6e8','center');
+  if(OPT.hats&&roundNo<rounds&&players.length>1)TX('CROWN FOR THE WINNER, DUNCE CAP FOR LAST - HATS STACK ALL GAME!',W/2,142,3,'#9aa6e8','center');
   if(resultsT>resultsReadyT()&&Math.floor(TG*2)%2)TX(msg,W/2,150,4,'#ffd23f','center');}
 function renderFinal(){panel(40,14,240,152);const w=standings[0];if(!w)return;const tie=standings[1]&&standings[1].total===w.total;
   TX(tie?'IT\'S A TIE!':labelOf(w)+' WINS!',W/2,24,12,tie?'#eef0ff':w.color,'center');
-  const wf=Math.floor(TG*3)%2?SPR.win:SPR.idle;spr(wf,W/2-12,44,w.pal,false,3);if(OPT.hats&&!tie)drawHat(1,wf,W/2-12,44,false,3);
+  const wf=Math.floor(TG*3)%2?SPR.win:SPR.idle;spr(wf,W/2-8,54,w.pal,false,2);if(OPT.hats&&!tie){const all=w.hats||[],hs=all.length?all.slice(-2):[1];drawStack(hs,wf,W/2-8,54,false,2);
+    const nc=all.filter(k=>k===1).length,nd=all.length-nc;if(nc)TX(nc+(nc>1?' CROWNS':' CROWN'),W/2+14,58,3,'#ffd23f','left',false);if(nd)TX(nd+(nd>1?' DUNCE CAPS':' DUNCE CAP'),W/2+14,nc?64:58,3,'#eef0ff','left',false);}
   TX('BEST TIME',214,75,3,'#9aa6e8','center');
   standings.forEach((p,i)=>{const y=82+i*12;TX(ord(i+1),58,y,5,i===0?'#ffd23f':'#9aa6e8');spr(SPR.idle,82,y-2,p.pal);TX(labelOf(p)+((p.ctl==='cpu'||p.isCpu)?' CPU':''),94,y,4.5,p.color);
     TX(p.best?fmtT(p.best):'--',214,y,4.5,p.best?'#eef0ff':'#5d66a8','center');TX(p.total+' PTS',268,y,5,'#eef0ff','right');});
