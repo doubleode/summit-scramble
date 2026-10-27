@@ -36,13 +36,14 @@ R('<title>Summit Scramble</title>',
 R('<style>', '<style>\nhtml,body{margin:0;background:#0b0c26;height:100%;overflow:hidden}\n'
   '#tipBox{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;background:rgba(7,8,28,.8);font-family:var(--font-pixel);padding:16px;box-sizing:border-box}\n'
   '#tipBox[hidden]{display:none}\n'
-  '#tipCard{background:var(--night);border:2px solid var(--snow);box-shadow:0 0 0 4px rgba(58,66,144,.6);padding:20px;max-width:420px;color:var(--ink);text-align:center}\n'
+  '#tipCard #tipX{position:absolute;top:6px;right:6px;width:30px;height:30px;padding:0;font-size:11px;background:transparent;border:2px solid #4a54a8;color:var(--snow)}\n'
+  '#tipCard{position:relative;background:var(--night);border:2px solid var(--snow);box-shadow:0 0 0 4px rgba(58,66,144,.6);padding:20px;max-width:420px;color:var(--ink);text-align:center}\n'
   '#tipCard h2{font-size:12px;margin:0 0 14px;font-weight:400;letter-spacing:.06em}\n'
   '#tipCard ol{font-size:9px;line-height:2;margin:0 0 16px;padding-left:22px;text-align:left;color:var(--snow)}\n'
   '#tipCard p{font-size:8px;line-height:1.8;margin:0 0 14px;color:var(--snow);opacity:.8}\n'
   '#tipCard button{font:12px var(--font-pixel);color:var(--ink);background:#ee4655;border:0;border-bottom:3px solid #a82a3a;padding:12px 22px;letter-spacing:.08em}\n', 1)
 R('\n<script>\n', '\n</head><body>\n<script>/*! PeerJS 1.5.4 | MIT License | peerjs.com */\n' + lib + '\n</script>\n<script>\n', 1)
-TIP = ('<div id="tipBox" hidden><div id="tipCard"><h2>FULL SCREEN ON IPHONE</h2>'
+TIP = ('<div id="tipBox" hidden><div id="tipCard"><button type="button" id="tipX" aria-label="Close">X</button><h2>FULL SCREEN ON IPHONE</h2>'
   '<ol><li>TAP SAFARI\'S SHARE BUTTON (THE SQUARE WITH AN ARROW).</li><li>SCROLL DOWN, TAP <b>ADD TO HOME SCREEN</b>, THEN ADD.</li>'
   '<li>OPEN SUMMIT SCRAMBLE FROM YOUR HOME SCREEN.</li></ol>'
   '<p>IT OPENS WITH NO ADDRESS BAR OR TABS. TURN THE PHONE SIDEWAYS TO PLAY.</p><button type="button" id="tipOk">GOT IT</button></div></div>\n')
@@ -126,7 +127,7 @@ function homeTip(){const b=document.getElementById('tipBox');if(b)b.hidden=false
 async function goFull(){if(!CAN_FS){homeTip();return;}const el=document.documentElement;
   try{await (el.requestFullscreen?el.requestFullscreen({navigationUI:'hide'}):el.webkitRequestFullscreen());}catch(e){homeTip();return;}
   try{await screen.orientation.lock('landscape');}catch(e){}setTimeout(resize,300);}
-document.addEventListener('pointerdown',e=>{if(e.target&&e.target.id==='tipOk'){e.preventDefault();document.getElementById('tipBox').hidden=true;}});
+document.addEventListener('pointerdown',e=>{if(e.target&&(e.target.id==='tipOk'||e.target.id==='tipX')){e.preventDefault();document.getElementById('tipBox').hidden=true;}});
 function inviteLink(){return location.origin+location.pathname+'?room='+roomCode.toUpperCase();}
 async function shareInvite(){const url=inviteLink();
   try{if(navigator.share){await navigator.share({title:'Summit Scramble',text:'Join my Summit Scramble game! Room '+roomCode.toUpperCase(),url});return;}}catch(e){if(e&&e.name==='AbortError')return;}
@@ -148,9 +149,15 @@ R("""  if(ROOM){try{ROOM.presence({g:null,hs:null,c:null}).catch(()=>{});}catch(
   """  if(ROOM){try{ROOM.close();}catch(e){}}ROOM=null;roomLive=false;""")
 
 # after the name prompt, follow an invite link straight into the game
-R("""  nameBox.hidden=true;nameTarget=null;keyEdge=Object.create(null);try{cv.focus();}catch(_){}SFX.blip();});""",
-  """  nameBox.hidden=true;nameTarget=null;keyEdge=Object.create(null);try{cv.focus();}catch(_){}SFX.blip();
-  if(pendingRoom.length===4&&NET==='off'&&state==='menu'){const c=pendingRoom;pendingRoom='';joinGame(c);}});""")
+# follow an invite link straight into the game once the name prompt closes (PLAY or X)
+R("let onBoxClosed=null;","let onBoxClosed=()=>{if(pendingRoom.length===4&&NET==='off'&&state==='menu'){const c=pendingRoom;pendingRoom='';setTimeout(()=>joinGame(c),0);}};")
+
+# ---------------------------------------------------------------- version label
+import datetime, zoneinfo
+stamp = datetime.datetime.now(zoneinfo.ZoneInfo('America/Denver')).strftime('%b %d %Y').upper()
+R("const BUILD={v:", "const BUILD={v:")
+s = s.replace("where:'CLAUDE',date:''}", "where:'GITHUB',date:'" + stamp + "'}", 1)
+
 
 # ---------------------------------------------------------------- menu: join by code / link
 a = s.index("  const on=!!ROOM;\n  btn(16,46,136,20,'LOCAL GAME'")

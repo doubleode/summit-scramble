@@ -43,17 +43,18 @@ body[data-ui=lobby] #bShove,body[data-ui=lobby] #bMenu{display:none}
 body[data-ui=other] #pad,body[data-ui=other] #bShove,body[data-ui=other] #bJump{display:none}
 #nameBox{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;background:rgba(7,8,28,.72);font-family:var(--font-pixel);padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
 #nameBox[hidden]{display:none}
-#nameForm{display:flex;flex-direction:column;gap:14px;align-items:stretch;background:var(--night);border:2px solid var(--snow);padding:22px 20px;width:min(340px,100%);box-sizing:border-box;box-shadow:0 0 0 4px rgba(58,66,144,.6)}
+#nameForm{position:relative;display:flex;flex-direction:column;gap:14px;align-items:stretch;background:var(--night);border:2px solid var(--snow);padding:22px 20px;width:min(340px,100%);box-sizing:border-box;box-shadow:0 0 0 4px rgba(58,66,144,.6)}
 #nameForm label{font-size:12px;color:var(--ink);text-align:center;letter-spacing:.06em}
 #nameForm p{margin:0;font-size:8px;line-height:1.7;color:var(--snow);opacity:.8;text-align:center}
 #nameIn{font:16px var(--font-pixel);text-transform:uppercase;text-align:center;letter-spacing:.12em;color:var(--ink);background:#141947;border:2px solid #4a54a8;padding:12px 8px;outline:none;border-radius:0;-webkit-user-select:text;user-select:text}
 #nameIn:focus{border-color:#ffd23f}
 #nameForm button{font:12px var(--font-pixel);color:var(--ink);background:#ee4655;border:0;border-bottom:3px solid #a82a3a;padding:12px;cursor:pointer;letter-spacing:.08em}
+#nameForm #nameX{position:absolute;top:6px;right:6px;width:30px;height:30px;padding:0;font-size:11px;background:transparent;border:2px solid #4a54a8;border-bottom-width:2px;color:var(--snow)}
 #nameForm button:focus-visible{outline:2px solid #ffd23f;outline-offset:2px}
 #rotHint{position:absolute;left:0;right:0;text-align:center;font-size:8px;color:var(--snow);opacity:.7;pointer-events:none;line-height:1.6;padding:0 16px}
 </style>
 <div id="wrap"><canvas id="c" tabindex="0" aria-label="Summit Scramble game screen"></canvas></div>
-<div id="nameBox" hidden><form id="nameForm" autocomplete="off"><label for="nameIn">YOUR NAME</label><input id="nameIn" name="playername" maxlength="8" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go" placeholder="PLAYER"><p>UP TO 8 LETTERS OR NUMBERS. OTHERS SEE IT ABOVE YOUR HEAD.</p><button type="submit">PLAY</button></form></div>
+<div id="nameBox" hidden><form id="nameForm" autocomplete="off"><button type="button" id="nameX" aria-label="Close">X</button><label for="nameIn">YOUR NAME</label><input id="nameIn" name="playername" maxlength="8" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go" placeholder="PLAYER"><p>UP TO 8 LETTERS OR NUMBERS. OTHERS SEE IT ABOVE YOUR HEAD.</p><button type="submit">PLAY</button></form></div>
 <div id="touch" hidden>
   <div id="rotHint" hidden>TURN YOUR PHONE SIDEWAYS FOR A BIGGER VIEW</div>
   <div id="pad" class="tc" aria-label="Move pad"><i class="l"></i><i class="r"></i><i class="d"></i><span>MOVE</span></div>
@@ -262,10 +263,53 @@ const num=(v,d=0)=>(typeof v==='number'&&isFinite(v))?v:d;
 const store={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 
 // ============================================================ audio
+const BUILD={v:15,where:'CLAUDE',date:''};
 let AC=null,muted=false;
 function audioInit(){if(!AC){try{AC=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(AC&&AC.state==='suspended')AC.resume().catch(()=>{});}
 function tone(f0,f1,dur,type='square',vol=0.04,delay=0){if(!AC||muted)return;const t=AC.currentTime+delay;const o=AC.createOscillator(),gn=AC.createGain();o.type=type;o.frequency.setValueAtTime(f0,t);o.frequency.exponentialRampToValueAtTime(Math.max(20,f1),t+dur);gn.gain.setValueAtTime(vol,t);gn.gain.exponentialRampToValueAtTime(0.0001,t+dur);o.connect(gn).connect(AC.destination);o.start(t);o.stop(t+dur+0.02);}
 function noise(dur,vol=0.05){if(!AC||muted)return;const len=Math.max(1,AC.sampleRate*dur|0);const b=AC.createBuffer(1,len,AC.sampleRate);const d=b.getChannelData(0);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*(1-i/len);const s=AC.createBufferSource();s.buffer=b;const gn=AC.createGain();gn.gain.value=vol;s.connect(gn).connect(AC.destination);s.start();}
+// ---- background music: an original bouncy chiptune, one variation per world. Its own quiet, filtered bus.
+let musicOn=store.get('summit_music')!==false;
+// melody tokens are scale degrees: 1-7, ' = octave up, , = octave down; ~ holds, . rests. one token = an eighth note
+const TUNE={
+  lead:"1 . 3 5 ~ . 3 . | 6 ~ 5 . 3 . 2 . | 1 . 3 5 ~ . 1' . | 7 ~ 6 . 5 ~ ~ . | 4 . 6 1' ~ . 6 . | 5 ~ 3 . 1 . 2 . | 3 . 2 . 1 . 5, . | 1 ~ ~ . . 5, 6, 7,",
+  harm:"3 . 5 1' ~ . 5 . | 1' ~ 1' . 6 . 4 . | 3 . 5 1' ~ . 3' . | 2' ~ 1' . 7 ~ ~ . | 6 . 1' 3' ~ . 1' . | 7 ~ 5 . 3 . 4 . | 5 . 4 . 3 . 7, . | 3 ~ ~ . . . . .",
+  roots:[1,6,1,5,4,1,5,1]};
+const MODES={major:[0,2,4,5,7,9,11],minor:[0,2,3,5,7,8,10],dorian:[0,2,3,5,7,9,10],hijaz:[0,1,4,5,7,8,10]};
+const SONGS={
+  menu:{key:72,mode:'major',bpm:108,lead:'triangle',harm:false,drums:false},
+  snow:{key:72,mode:'major',bpm:140,lead:'square',harm:true,drums:true},
+  lava:{key:69,mode:'minor',bpm:152,lead:'square',harm:true,drums:true},
+  forest:{key:74,mode:'dorian',bpm:132,lead:'triangle',harm:true,drums:true},
+  desert:{key:71,mode:'hijaz',bpm:126,lead:'square',harm:true,drums:true}};
+function parseLine(str){const out=[];const toks=str.replace(/\|/g,' ').trim().split(/\s+/);let cur=null;
+  toks.forEach((t,i)=>{if(t==='~'){if(cur)cur.len++;return;}if(t==='.'){cur=null;return;}
+    const m=/^(\d)([',]*)$/.exec(t);if(!m){cur=null;return;}let oc=0;for(const c of m[2])oc+=c==="'"?1:-1;cur={step:i,deg:+m[1]-1,oc,len:1};out.push(cur);});
+  return {notes:out,steps:toks.length};}
+const TUNE_P={lead:parseLine(TUNE.lead),harm:parseLine(TUNE.harm)};
+function degMidi(sg,deg,oc){const sc=MODES[sg.mode];const o=Math.floor(deg/7);return sg.key+sc[((deg%7)+7)%7]+12*(o+oc);}
+const MUS={name:null,step:0,next:0,bus:null,noise:null};
+function musBus(){if(!MUS.bus){const gn=AC.createGain();gn.gain.value=0;const lp=AC.createBiquadFilter();lp.type='lowpass';lp.frequency.value=2000;lp.Q.value=0.3;gn.connect(lp);lp.connect(AC.destination);MUS.bus=gn;}return MUS.bus;}
+function mNote(midi,t,dur,type,vol){const o=AC.createOscillator(),gn=AC.createGain();o.type=type;o.frequency.value=440*Math.pow(2,(midi-69)/12);
+  gn.gain.setValueAtTime(0.0001,t);gn.gain.linearRampToValueAtTime(vol,t+0.01);gn.gain.setValueAtTime(vol,t+dur*0.55);gn.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(gn);gn.connect(MUS.bus);o.start(t);o.stop(t+dur+0.03);}
+function mHat(t,vol,dur){if(!MUS.noise){const len=AC.sampleRate*0.08|0;const b=AC.createBuffer(1,len,AC.sampleRate);const d=b.getChannelData(0);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*(1-i/len);MUS.noise=b;}
+  const s=AC.createBufferSource();s.buffer=MUS.noise;const gn=AC.createGain();gn.gain.setValueAtTime(vol,t);gn.gain.exponentialRampToValueAtTime(0.0001,t+dur);s.connect(gn);gn.connect(MUS.bus);s.start(t);s.stop(t+dur+0.02);}
+function musicStep(sg,step,t,sd){const N=TUNE_P.lead.steps;const st=step%N;
+  for(const n of TUNE_P.lead.notes)if(n.step===st)mNote(degMidi(sg,n.deg,n.oc),t,n.len*sd*0.92,sg.lead,sg.lead==='square'?0.05:0.09);
+  if(sg.harm)for(const n of TUNE_P.harm.notes)if(n.step===st)mNote(degMidi(sg,n.deg,n.oc)-12,t,n.len*sd*0.85,'triangle',0.05);
+  const bar=Math.floor(st/8),b8=st%8,root=TUNE.roots[bar]-1;
+  if(b8%2===0){const deg=b8%4===0?root:root+4;mNote(degMidi(sg,deg,-2),t,sd*1.6,'triangle',0.13);}
+  if(sg.drums){if(b8%2===1)mHat(t,0.05,0.03);if(b8===0||b8===4)mNote(sg.key-36,t,0.09,'sine',0.16);}}
+function musicTick(){if(!AC)return;const bus=musBus();const want=(muted||!musicOn||document.hidden)?0:0.22;
+  if(Math.abs(bus.gain.value-want)>0.001)bus.gain.setTargetAtTime(want,AC.currentTime,0.08);
+  if(want===0){MUS.name=null;return;}
+  const racing=state==='intro'||state==='play'||state==='pause';
+  const name=racing?['snow','lava','forest','desert'][biomeIdx%4]:'menu';const sg=SONGS[name];const sd=60/sg.bpm/2;
+  const now=AC.currentTime;if(name!==MUS.name){MUS.name=name;MUS.step=0;MUS.next=now+0.08;}
+  if(MUS.next<now-0.25)MUS.next=now+0.05;
+  while(MUS.next<now+0.18){musicStep(sg,MUS.step,MUS.next,sd);MUS.next+=sd;MUS.step++;}}
+function toggleMusic(){musicOn=!musicOn;store.set('summit_music',musicOn);toast(musicOn?'MUSIC ON':'MUSIC OFF');}
 let lastCoinSfx=0;
 const SFX={
   jump:()=>tone(260,520,0.09,'square',0.03),
@@ -408,7 +452,8 @@ function setSlot(i,type,dev=null){slots[i].type=type;slots[i].dev=dev;slots[i].p
 function fillCpus(){const full=slots.every(s=>s.type!=='open');if(full){slots.forEach((s,i)=>{if(s.type==='cpu')setSlot(i,'open')})}else slots.forEach((s,i)=>{if(s.type==='open')setSlot(i,'cpu')});SFX.blip();}
 
 // ============================================================ online (room capability)
-let NET='off';                 // off | host | client
+let NET='off';
+let onBoxClosed=null;      // hook for the web build (follow an invite link after the name prompt)                 // off | host | client
 let ROOM=null,USERCAP=null,roomState='connecting',GROOM=null,myPeer=null,myBy='',roomCode='';
 let roomLive=false,lobbyPeers=null,netErr='',netErrT=0,hostSeenAt=0,joinAt=0,lastSnapObj=null,lastEvSeen=-1,curRid=-1,myJoin={},advT=0,netT=0;
 let hostEvents=[],evId=0,roundId=0,levelSeed=null;
@@ -432,7 +477,7 @@ function labelOf(p){return slotLabel(p.slot);}
 // ---- name entry
 let nameTarget=null,boxMode='name';
 const nameBox=document.getElementById('nameBox'),nameIn=document.getElementById('nameIn');
-const nameLbl=document.querySelector('#nameForm label'),nameTip=document.querySelector('#nameForm p'),nameBtn=document.querySelector('#nameForm button');
+const nameLbl=document.querySelector('#nameForm label'),nameTip=document.querySelector('#nameForm p'),nameBtn=document.querySelector('#nameForm button:not(#nameX)');
 function setBoxMode(m){boxMode=m;const code=m==='code';nameLbl.textContent=code?'ROOM CODE':'YOUR NAME';nameTip.textContent=code?'THE 4 LETTERS SHOWN AT THE TOP OF THE HOST\'S LOBBY.':'UP TO 8 LETTERS OR NUMBERS. OTHERS SEE IT ABOVE YOUR HEAD.';
   nameBtn.textContent=code?'JOIN':'PLAY';nameIn.maxLength=code?4:8;nameIn.placeholder=code?'ABCD':'PLAYER';}
 function openCode(){setBoxMode('code');nameIn.value='';nameBox.hidden=false;for(const k in keys)keys[k]=false;setTimeout(()=>{try{nameIn.focus();}catch(e){}},30);}
@@ -448,9 +493,12 @@ document.getElementById('nameForm').addEventListener('submit',e=>{e.preventDefau
     slots.forEach(s=>{if(s.type==='human'&&!s.nm)s.nm=myName;});const first=Object.values(myJoin)[0];if(first)first.nm=myName;}
   else if(NET==='client'){const s=slots[nameTarget];if(s&&myJoin[s.dev])myJoin[s.dev].nm=v;}
   else if(slots[nameTarget])slots[nameTarget].nm=v;
-  nameBox.hidden=true;nameTarget=null;keyEdge=Object.create(null);try{cv.focus();}catch(_){}SFX.blip();});
+  nameBox.hidden=true;nameTarget=null;keyEdge=Object.create(null);try{cv.focus();}catch(_){}SFX.blip();if(typeof onBoxClosed==='function')onBoxClosed();});
 nameIn.addEventListener('input',()=>{const v=boxMode==='code'?nameIn.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,4):nameIn.value.toUpperCase().replace(/[^A-Z0-9 ]/g,'').slice(0,8);if(v!==nameIn.value)nameIn.value=v;});
-nameBox.addEventListener('pointerdown',e=>{if(e.target===nameBox&&boxMode==='code'){nameBox.hidden=true;setBoxMode('name');}});
+function closeBox(){nameBox.hidden=true;nameTarget=null;setBoxMode('name');keyEdge=Object.create(null);try{cv.focus();}catch(_){}if(typeof onBoxClosed==='function')onBoxClosed();}
+nameBox.addEventListener('pointerdown',e=>{if(e.target===nameBox&&boxMode==='code')closeBox();});
+document.getElementById('nameX').addEventListener('click',e=>{e.preventDefault();audioInit();SFX.blip();closeBox();});
+nameIn.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();closeBox();}});
 openName(null);
 function lobbyList(){if(lobbyPeers)return lobbyPeers;try{return ROOM.peers()||[];}catch(e){return[];}}
 function inMyGame(p){const pr=p.presence||{};if(p.sameTab)return true;
@@ -827,9 +875,10 @@ function processEvents(events){
 
 // ============================================================ update
 function tick(dt){
-  TG+=dt;if(!nameBox.hidden){keyEdge=Object.create(null);clicks=[];if(state==='menu'||state==='lobby'){menuCam+=dt*14;if(NET!=='off')netTick(dt);return;}}
+  TG+=dt;try{musicTick();}catch(e){}if(!nameBox.hidden){keyEdge=Object.create(null);clicks=[];if(state==='menu'||state==='lobby'){menuCam+=dt*14;if(NET!=='off')netTick(dt);return;}}
   pollInput();
   if(keyEdge.KeyM){muted=!muted;toast(muted?'SOUND OFF':'SOUND ON');}
+  if(keyEdge.KeyN)toggleMusic();
   if(NET!=='off')netTick(dt);
   if(state==='menu')updateMenu(dt);
   else if(state==='lobby'){if(NET==='client')clientLobby(dt);else updateLobby(dt);}
@@ -1313,7 +1362,9 @@ function renderMenu(){
   else{const gs=openGames();if(!gs.length){TX('NO OPEN GAMES YET',235,84,4,'#5d66a8','center',false);TX('HOST ONE OR WAIT',235,92,4,'#5d66a8','center',false);TX('FOR A FRIEND',235,100,4,'#5d66a8','center',false);}
     gs.slice(0,4).forEach((gm,i)=>{const y=64+i*15;const nm=shortName(gm.by)||'SOMEONE';R(168,y-2,134,13,'#141947');TX(nm+'\'S GAME',172,y+1,3.5,'#eef0ff','left',false);TX(gm.st?'IN RACE':gm.n+' JOINED',172,y+6,2.8,'#9aa6e8','left',false);
       btn(266,y-1,32,11,'JOIN',()=>joinGame(gm.code),true,false,4);});}
-  TX(IS_TOUCH?'TAP A BUTTON TO PLAY':'ENTER: LOCAL GAME    M: SOUND',W/2,146,3.5,'#9aa6e8','center');
+  TX(IS_TOUCH?'TAP A BUTTON TO PLAY':'ENTER: LOCAL GAME    M: SOUND    N: MUSIC',W/2,146,3.5,'#9aa6e8','center');
+  btn(W-58,4,54,11,musicOn?'MUSIC: ON':'MUSIC: OFF',toggleMusic,false,false,3.2);
+  TX(BUILD.where+' VERSION '+BUILD.v+(BUILD.date?'  -  '+BUILD.date:''),4,171,2.6,'#7d88c8','left',false);
   if(toasts.length){R(0,154,W,10,'rgba(7,8,28,0.85)');TX(toasts[toasts.length-1].text,W/2,156,4.5,toasts[toasts.length-1].col,'center');}
 }
 function renderLobby(){
@@ -1353,7 +1404,8 @@ function renderLobby(){
   const full=slots.every(s=>s.type!=='open');
   if(host)btn(6,116,76,13,full?'CLEAR CPUS':'FILL CPUS',fillCpus);
   btn(host?88:6,116,host?56:76,13,'BACK',()=>{if(NET!=='off')leaveOnline();else state='menu';});
-  btn(host?150:88,116,host?84:146,13,muted?'SOUND: OFF':'SOUND: ON',()=>{muted=!muted;});
+  btn(host?150:88,116,host?41:72,13,muted?'SFX: OFF':'SFX: ON',()=>{muted=!muted;},false,false,3.5);
+  btn(host?193:162,116,host?41:72,13,musicOn?'MUSIC: ON':'MUSIC: OFF',toggleMusic,false,false,3.5);
   btn(240,116,74,13,host?'START':'WAITING',host?tryStart:null,true,!host);
   const L=IS_TOUCH?['TAP JUMP TO JOIN. PAD LEFT/RIGHT PICKS A COLOR. TAP YOUR NAME TO EDIT IT.',
     'PAD: LEFT AND RIGHT MOVE, BOTTOM CROUCHES OR SLIDES. TAP JUMP AGAIN TO DOUBLE JUMP.',
