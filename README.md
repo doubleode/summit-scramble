@@ -4,6 +4,10 @@ A 6-player pixel platformer race: stomp rivals, team up when you must. Plays on 
 
 **Play:** https://doubleode.github.io/summit-scramble/
 
+## Stage editor
+
+STAGE EDITOR on the title screen: pick a biome, paint tiles from the palette (left click paints, right click erases, wheel scrolls), then TEST PLAY. Saved stages appear in the lobby's WORLD option and work online; the host's stage is sent to everyone. SHARE CODE / LOAD CODE trade stages as text.
+
 ## Files
 
 - `index.html` is the game GitHub Pages serves. It's built from the files in `source/`, so don't edit it by hand.
