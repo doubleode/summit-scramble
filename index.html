@@ -344,7 +344,7 @@ function stageChunk(st){const rows=st.rows.map(r=>r.slice()),cv=st.cv.map(r=>r.s
   return {w,rows,cv};}
 
 // ============================================================ audio
-const BUILD={v:20,where:'GITHUB',date:'OCT 26 2026'};
+const BUILD={v:21,where:'GITHUB',date:'OCT 26 2026'};
 let AC=null,muted=false;
 function audioInit(){if(!AC){try{AC=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(AC&&AC.state==='suspended')AC.resume().catch(()=>{});}
 function tone(f0,f1,dur,type='square',vol=0.04,delay=0){if(!AC||muted)return;const t=AC.currentTime+delay;const o=AC.createOscillator(),gn=AC.createGain();o.type=type;o.frequency.setValueAtTime(f0,t);o.frequency.exponentialRampToValueAtTime(Math.max(20,f1),t+dur);gn.gain.setValueAtTime(vol,t);gn.gain.exponentialRampToValueAtTime(0.0001,t+dur);o.connect(gn).connect(AC.destination);o.start(t);o.stop(t+dur+0.02);}
@@ -438,6 +438,8 @@ const SFX={
   spawn:()=>tone(600,1200,0.12,'triangle',0.035),
   crumble:()=>noise(0.12,0.025),
   slide:()=>noise(0.05,0.015),
+  whoosh:()=>tone(900,260,0.32,'triangle',0.025),
+  thud:()=>{tone(150,42,0.22,'sine',0.13);noise(0.08,0.06);tone(260,90,0.12,'square',0.025);},
 };
 
 // ============================================================ canvas
@@ -1083,9 +1085,9 @@ function tick(dt){
   else if(escMenu){if(keyEdge.Escape)escMenu=false;else if(keyEdge.KeyQ){escMenu=false;if(NET!=='off')leaveOnline();else quitLocal();}
     else{runClicks();if(NET==='client')clientGame(dt*OPT.speed);else if(state==='intro'||state==='play')updateGame(dt*OPT.speed);else updateParts(dt);}}
   else if(state==='results'){resultsT+=dt;updateParts(dt);
-    {if(resultsT<lastRT)lastRT=0;const rw=roundWinner();if(rw){if(lastRT<0.95&&resultsT>=0.95)SFX.check();if(OPT.hats&&lastRT<CONGRATS_T+FLY_T&&resultsT>=CONGRATS_T+FLY_T)SFX.coin();}lastRT=resultsT;}
+    {if(resultsT<lastRT)lastRT=0;const rw=roundWinner();if(rw){if(lastRT<0.95&&resultsT>=0.95)SFX.check();if(roundLoser()){if(lastRT<THROW_T&&resultsT>=THROW_T)SFX.whoosh();if(lastRT<HIT_T&&resultsT>=HIT_T)SFX.thud();}if(OPT.hats&&lastRT<congratsT()+FLY_T&&resultsT>=congratsT()+FLY_T)SFX.coin();}lastRT=resultsT;}
     if(ED.testing){if((resultsT>1.2&&anyContinue())||resultsT>6)edEndTest();}
-    else if(NET!=='client'&&roundWinner()&&resultsT<CONGRATS_T&&resultsT>0.4&&anyContinue()){resultsT=CONGRATS_T;}
+    else if(NET!=='client'&&roundWinner()&&resultsT<congratsT()&&resultsT>0.4&&anyContinue()){resultsT=congratsT();}
     else if(NET!=='client'){const allCpu=players.every(p=>p.ctl!=='local'),rd=resultsReadyT(),extra=rd-1.5;if((resultsT>rd&&anyContinue())||(allCpu&&resultsT>6+extra)||(NET==='host'&&resultsT>9+extra)){if(roundNo>=rounds){state='final';resultsT=0;}else startRound();}}
     if(keyEdge.Escape)escMenu=true;}
   else if(state==='final'){resultsT+=dt;if(Math.random()<0.5)parts.push({x:rnd(0,W),y:-4,vx:rnd(-20,20),vy:rnd(20,50),life:4,max:4,col:COLORS[Math.random()*12|0][1],g:20,s:2});updateParts(dt);
@@ -1525,9 +1527,12 @@ function renderGame(){
   if(escMenu){panel(70,60,180,62);TX(NET==='off'?'MENU':'ONLINE GAME',W/2,68,8,'#eef0ff','center');if(NET!=='off')TX('THE GAME KEEPS RUNNING',W/2,82,4,'#9aa6e8','center');
     btn(80,94,76,14,'RESUME',()=>{escMenu=false;});btn(164,94,76,14,NET==='off'?(ED.testing?'EDITOR':'QUIT'):'LEAVE',()=>{escMenu=false;if(NET!=='off')leaveOnline();else quitLocal();},true);}
 }
-const CONGRATS_T=2.4,FLY_T=0.75;   // congrats card, then the crown flies to the winner's row
+const FLY_T=0.75;   // congrats card, then the crown flies to the winner's row
+function roundLoser(){return (OPT.hats&&players.length>2&&!ED.testing)?players.find(p=>p.nextHat===2)||null:null;}
+function congratsT(){return roundLoser()?3.4:2.4;}
+const THROW_T=1.3,HIT_T=1.75,FALL_T=2.05;   // dunce cap gag timeline (seconds into the card)
 function roundWinner(){return (players.length>1&&!ED.testing)?players.find(p=>p.nextHat===1)||null:null;}
-function resultsReadyT(){return roundWinner()?CONGRATS_T+FLY_T+0.4:1.5;}
+function resultsReadyT(){return roundWinner()?congratsT()+FLY_T+0.4:1.5;}
 function hatPos(kind,fr,x,y,sc){const ht=HATS[kind],hd=headOf(fr);return {x:x+Math.round(hd.cx-3.5)*sc,y:y+(hd.row-ht.rows.length+HAT_SINK)*sc};}
 const easeOut=k=>1-Math.pow(1-clamp(k,0,1),3);
 function bounceDrop(k){k=clamp(k,0,1);if(k<0.7){const e=k/0.7;return e*e;}const e=(k-0.7)/0.3;return 1-Math.sin(e*Math.PI)*0.12;}
@@ -1536,12 +1541,14 @@ function renderCongrats(w,t){const crown=OPT.hats;
   g.fillStyle='rgba(7,8,28,0.55)';g.fillRect(0,0,W,H);
   panel(60,14,200,150);
   // rays behind the winner
-  const cx=W/2,cy=BIG.y+22;g.globalAlpha=0.16+0.06*Math.sin(TG*3);for(let i=0;i<12;i++){const a=i/12*Math.PI*2+TG*0.4;for(let rr=14;rr<52;rr+=2)R(cx+Math.cos(a)*rr,cy+Math.sin(a)*rr,2,2,'#ffd23f');}g.globalAlpha=1;
-  const bob=Math.round(Math.sin(TG*5)*1);const fr=t>1.1&&Math.floor(TG*3)%2?SPR.win:SPR.idle;BIG.x=Math.round(cx-16);
+  const cx=W/2-(roundLoser()?12:0),cy=BIG.y+22;g.globalAlpha=0.16+0.06*Math.sin(TG*3);for(let i=0;i<12;i++){const a=i/12*Math.PI*2+TG*0.4;for(let rr=14;rr<52;rr+=2)R(cx+Math.cos(a)*rr,cy+Math.sin(a)*rr,2,2,'#ffd23f');}g.globalAlpha=1;
+  const lo=roundLoser();const throwing=lo&&t>THROW_T-0.18&&t<THROW_T+0.12;
+  const bob=Math.round(Math.sin(TG*5)*1);const fr=throwing?SPR.shove:t>1.1&&Math.floor(TG*3)%2?SPR.win:SPR.idle;BIG.x=Math.round(cx-16);
   spr(fr,BIG.x,BIG.y+bob,w.pal,false,BIG.sc);
   if(crown){const hp=hatPos(1,fr,BIG.x,BIG.y+bob,BIG.sc);const k=(t-0.35)/0.75;
     if(k>0){const yy=Math.round(hp.y-70*(1-bounceDrop(k)));spr(HATS[1].rows,hp.x,yy,HATS[1].pal,false,BIG.sc);}
     if(t>1.1){const e=(t-1.1)*1.6;if(e<1.4)for(let i=0;i<10;i++){const a=i/10*Math.PI*2;R(hp.x+16+Math.cos(a)*e*26,hp.y+6+Math.sin(a)*e*20,2,2,i%2?'#ffd23f':'#fff4b0');}}}
+  if(lo)drawDunceGag(lo,t,fr,bob);
   const a=clamp(t*3,0,1);g.globalAlpha=a;
   TX('CONGRATS!',W/2,22,10,'#ffd23f','center');
   TX(labelOf(w)+(w.ctl==='cpu'||w.isCpu?' (CPU)':''),W/2,38,7,w.color,'center');
@@ -1549,17 +1556,37 @@ function renderCongrats(w,t){const crown=OPT.hats;
   if(t>1.0)TX(crown?(roundNo<rounds?'THE CROWN IS YOURS NEXT ROUND!':'THE CROWN IS YOURS!'):'ROUND WINNER!',W/2,128,4.5,'#ffd23f','center');
   g.globalAlpha=1;
   if(NET!=='client'&&t>0.8&&Math.floor(TG*2)%2)TX(IS_TOUCH?'TAP TO SKIP':'PRESS JUMP TO SKIP',W/2,150,3,'#9aa6e8','center');}
-function renderResults(){const rw=roundWinner();if(rw&&resultsT<CONGRATS_T){renderCongrats(rw,resultsT);return;}
+function drawDunceGag(lo,t,wfr,bob){
+  const sc=2,feet=BIG.y+40,lx=206,ly=feet-20;            // loser stands on the right, facing the winner
+  const head=hatPos(2,SPR.idle,lx,ly,sc);
+  if(t>0.25)TX(labelOf(lo)+'  (LAST)',lx+8,feet+4,3,lo.color,'center',false);
+  const fallK=clamp((t-FALL_T)/0.32,0,1),hit=t>=HIT_T;
+  // the loser: idle, then stumbles back from the bonk, then topples over
+  let shake=0;if(hit&&t<FALL_T)shake=Math.round(Math.sin((t-HIT_T)*60)*2)+Math.round((t-HIT_T)*10);
+  const lfr=hit?SPR.stun:SPR.idle;
+  g.save();g.translate(lx+16+shake,feet);g.rotate(easeOut(fallK)*Math.PI*0.5);
+  spr(lfr,-16,-20,lo.pal,true,sc);if(hit)spr(HATS[2].rows,head.x-lx-16,head.y-ly-20,HATS[2].pal,true,sc);
+  g.restore();
+  if(hit){// BONK! and a few chips of impact
+    const k=t-HIT_T;if(k<0.7){g.globalAlpha=clamp(1.4-k*2,0,1);TX('BONK!',lx+14,ly-14-k*10,6,'#ffffff','center');for(let i=0;i<6;i++){const a=-Math.PI*0.9+i*0.36;R(head.x+8+Math.cos(a)*k*40,head.y+4+Math.sin(a)*k*30,2,2,i%2?'#eef0ff':'#ffd23f');}g.globalAlpha=1;}
+    if(fallK>=1){// dizzy stars over the fallen racer
+      for(let i=0;i<3;i++){const a=TG*5+i*2.1;R(lx+16+20+Math.cos(a)*8,feet-6+Math.sin(a)*3,2,2,'#ffd23f');}}}
+  // the cap in flight: from the winner's hand, spinning, arcing onto the loser's head
+  if(t>=THROW_T-0.05&&!hit){const k=clamp((t-THROW_T)/(HIT_T-THROW_T),0,1);
+    const hx=BIG.x+26,hy=BIG.y+26+bob,tx=head.x,ty=head.y;
+    const x=hx+(tx-hx)*k,y=hy+(ty-hy)*k-Math.sin(k*Math.PI)*34;
+    g.save();g.translate(Math.round(x)+8,Math.round(y)+7);g.rotate(k*Math.PI*3);spr(HATS[2].rows,-8,-7,HATS[2].pal,false,sc);g.restore();}}
+function renderResults(){const rw=roundWinner();if(rw&&resultsT<congratsT()){renderCongrats(rw,resultsT);return;}
   panel(24,18,272,146);TX('ROUND '+roundNo+' RESULTS',W/2,26,8,'#eef0ff','center');
   const cols=[[114,'COINS'],[146,'TIME'],[184,'FINISH'],[216,'POLE'],[245,'ROUND'],[274,'TOTAL']];
   cols.forEach(([x,t])=>TX(t,x,42,3.5,'#9aa6e8','center'));
-  standings.forEach((p,i)=>{const y=52+i*15;if(i===0)R(30,y-2,260,14,'rgba(255,210,63,0.10)');spr(SPR.idle,36,y,p.pal);{const flying=p===rw&&resultsT<CONGRATS_T+FLY_T;if(OPT.hats&&p.nextHat&&!flying&&(roundNo<rounds||p.nextHat===1))drawHat(p.nextHat,SPR.idle,36,y,false);
-      if(p===rw&&OPT.hats){const lt=resultsT-(CONGRATS_T+FLY_T);if(lt>=0&&lt<0.6)for(let k=0;k<8;k++){const a=k/8*Math.PI*2;R(39+Math.cos(a)*lt*20,y-2+Math.sin(a)*lt*14,1,1,'#ffd23f');}}}TX(labelOf(p)+((p.ctl==='cpu'||p.isCpu)?' CPU':''),47,y+2,4.5,p.color);
+  standings.forEach((p,i)=>{const y=52+i*15;if(i===0)R(30,y-2,260,14,'rgba(255,210,63,0.10)');spr(SPR.idle,36,y,p.pal);{const flying=p===rw&&resultsT<congratsT()+FLY_T;if(OPT.hats&&p.nextHat&&!flying&&(roundNo<rounds||p.nextHat===1))drawHat(p.nextHat,SPR.idle,36,y,false);
+      if(p===rw&&OPT.hats){const lt=resultsT-(congratsT()+FLY_T);if(lt>=0&&lt<0.6)for(let k=0;k<8;k++){const a=k/8*Math.PI*2;R(39+Math.cos(a)*lt*20,y-2+Math.sin(a)*lt*14,1,1,'#ffd23f');}}}TX(labelOf(p)+((p.ctl==='cpu'||p.isCpu)?' CPU':''),47,y+2,4.5,p.color);
     TX(p.coins,114,y+2,4.5,'#eef0ff','center');TX(p.place?fmtT(p.ftime):'DNF',146,y+2,4.5,p.place?'#eef0ff':'#5d66a8','center');
     TX(p.place?ord(p.place)+' +'+p.bonus:'--',184,y+2,4.5,p.place?'#ffd23f':'#5d66a8','center');TX(p.place?'+'+(p.pole|0):'--',216,y+2,4.5,p.place?(p.pole>=5?'#ffd23f':'#eef0ff'):'#5d66a8','center');
     TX('+'+p.roundScore,245,y+2,4.5,'#c9d1f5','center');TX(p.total,274,y+2,5,'#eef0ff','center');});
-  if(rw&&OPT.hats&&resultsT<CONGRATS_T+FLY_T){const i=standings.indexOf(rw);if(i>=0){const k=easeOut((resultsT-CONGRATS_T)/FLY_T);
-      const fr=SPR.idle,from=hatPos(1,fr,Math.round(W/2-16),BIG.y,BIG.sc),to=hatPos(1,fr,36,52+i*15,1);const sc=Math.max(1,Math.round(BIG.sc+(1-BIG.sc)*k));
+  if(rw&&OPT.hats&&resultsT<congratsT()+FLY_T){const i=standings.indexOf(rw);if(i>=0){const k=easeOut((resultsT-congratsT())/FLY_T);
+      const fr=SPR.idle,from=hatPos(1,fr,BIG.x,BIG.y,BIG.sc),to=hatPos(1,fr,36,52+i*15,1);const sc=Math.max(1,Math.round(BIG.sc+(1-BIG.sc)*k));
       const x=from.x+(to.x-from.x)*k,y=from.y+(to.y-from.y)*k-Math.sin(k*Math.PI)*26;spr(HATS[1].rows,Math.round(x),Math.round(y),HATS[1].pal,false,sc);}}
   const PJ=IS_TOUCH?'TAP':'PRESS JUMP';const msg=NET==='client'?'WAITING FOR THE HOST':(roundNo>=rounds?PJ+' FOR FINAL STANDINGS':PJ+' FOR NEXT ROUND');
   if(OPT.hats&&roundNo<rounds&&players.length>1)TX(players.length>2?'NEXT ROUND: CROWN FOR THE WINNER, DUNCE CAP FOR LAST':'NEXT ROUND: CROWN FOR THE WINNER',W/2,142,3,'#9aa6e8','center');
