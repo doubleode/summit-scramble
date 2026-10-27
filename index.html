@@ -344,7 +344,7 @@ function stageChunk(st){const rows=st.rows.map(r=>r.slice()),cv=st.cv.map(r=>r.s
   return {w,rows,cv};}
 
 // ============================================================ audio
-const BUILD={v:21,where:'GITHUB',date:'OCT 26 2026'};
+const BUILD={v:22,where:'GITHUB',date:'OCT 26 2026'};
 let AC=null,muted=false;
 function audioInit(){if(!AC){try{AC=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(AC&&AC.state==='suspended')AC.resume().catch(()=>{});}
 function tone(f0,f1,dur,type='square',vol=0.04,delay=0){if(!AC||muted)return;const t=AC.currentTime+delay;const o=AC.createOscillator(),gn=AC.createGain();o.type=type;o.frequency.setValueAtTime(f0,t);o.frequency.exponentialRampToValueAtTime(Math.max(20,f1),t+dur);gn.gain.setValueAtTime(vol,t);gn.gain.exponentialRampToValueAtTime(0.0001,t+dur);o.connect(gn).connect(AC.destination);o.start(t);o.stop(t+dur+0.02);}
@@ -586,17 +586,31 @@ const PEER_PREFIX='summitscramble-v1-';
 const EXTRA_ICE=[];
 let pendingRoom=(NETQ.get('room')||'').toLowerCase().replace(/[^a-z]/g,'').slice(0,4);
 let netBusy=false;
-function peerOpts(){const o={debug:0};
+// Relays for when phones can't reach each other directly (cell data, different home networks, strict routers):
+// PeerJS's free relay plus Metered's free Open Relay (public shared-secret credentials, no signup).
+async function iceServers(){const ice=[{urls:'stun:stun.l.google.com:19302'},
+    {urls:['turn:eu-0.turn.peerjs.com:3478','turn:us-0.turn.peerjs.com:3478'],username:'peerjs',credential:'peerjsp'}];
+  try{const user=(Math.floor(Date.now()/1000)+24*3600)+':summitscramble';const enc=new TextEncoder();
+    const key=await crypto.subtle.importKey('raw',enc.encode('openrelayprojectsecret'),{name:'HMAC',hash:'SHA-1'},false,['sign']);
+    const sig=new Uint8Array(await crypto.subtle.sign('HMAC',key,enc.encode(user)));let bin='';for(const b of sig)bin+=String.fromCharCode(b);
+    ice.push({urls:['turn:staticauth.openrelay.metered.ca:80','turn:staticauth.openrelay.metered.ca:443?transport=tcp','turns:staticauth.openrelay.metered.ca:443?transport=tcp'],username:user,credential:btoa(bin)});}catch(e){}
+  return ice.concat(EXTRA_ICE);}
+function peerOpts(ice){const o={debug:0,config:{iceServers:ice}};
   const ph=NETQ.get('peerhost');if(ph){const [h,p]=ph.split(':');o.host=h;o.port=+(p||9000);o.path='/';o.secure=location.protocol==='https:'&&h!=='localhost';}
-  if(EXTRA_ICE.length)o.config={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:['turn:eu-0.turn.peerjs.com:3478','turn:us-0.turn.peerjs.com:3478'],username:'peerjs',credential:'peerjsp'},...EXTRA_ICE]};
   return o;}
-const errText=e=>{const t=e&&e.type;return t==='peer-unavailable'?'NO GAME WITH THAT CODE':t==='unavailable-id'?'CODE IN USE':t==='browser-incompatible'?'THIS BROWSER CAN\'T PLAY ONLINE':
+// keep the host's screen awake while hosting (phones drop the game when they sleep)
+let wakeLock=null;
+async function keepAwake(on){try{if(on&&!wakeLock&&navigator.wakeLock&&document.visibilityState==='visible'){wakeLock=await navigator.wakeLock.request('screen');wakeLock.addEventListener('release',()=>{wakeLock=null;});}
+  else if(!on&&wakeLock){const w=wakeLock;wakeLock=null;await w.release();}}catch(e){}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='visible')return;if(NET==='host')keepAwake(true);
+  const L=GROOM;if(L&&L.pr&&L.pr.disconnected&&!L.pr.destroyed){try{L.pr.reconnect();}catch(e){}}});
+const errText=e=>{const t=e&&e.type;return t==='peer-unavailable'?'NO GAME WITH THAT CODE - CHECK THE LETTERS':t==='unavailable-id'?'CODE IN USE':t==='browser-incompatible'?'THIS BROWSER CAN\'T PLAY ONLINE':
   (t==='network'||t==='server-error'||t==='socket-error'||t==='socket-closed')?'CAN\'T REACH THE GAME SERVER':t==='webrtc'?'CONNECTION FAILED':String((e&&(e.message||t))||e||'ERROR').toUpperCase().slice(0,32);};
-function openLink(role,code){return new Promise((resolve,reject)=>{
+async function openLink(role,code,onStatus){const ice=await iceServers();return new Promise((resolve,reject)=>{
   if(typeof Peer!=='function'){reject('ONLINE PLAY DIDN\'T LOAD');return;}
-  let done=false,pr;const fail=m=>{if(done)return;done=true;clearTimeout(to);try{pr&&pr.destroy();}catch(e){}reject(m);};
-  const to=setTimeout(()=>fail(role==='host'?'CAN\'T REACH THE GAME SERVER':'NO ANSWER FROM THAT GAME'),15000);
-  try{pr=role==='host'?new Peer(PEER_PREFIX+code,peerOpts()):new Peer(peerOpts());}catch(e){fail(errText(e));return;}
+  let done=false,pr,to=0,att=0;const fail=m=>{if(done)return;done=true;clearTimeout(to);clearTimeout(att);try{pr&&pr.destroy();}catch(e){}reject(m);};
+  to=setTimeout(()=>fail('CAN\'T REACH THE GAME SERVER'),15000);
+  try{pr=role==='host'?new Peer(PEER_PREFIX+code,peerOpts(ice)):new Peer(peerOpts(ice));}catch(e){fail(errText(e));return;}
   const L={role,code,pr,mine:{},seq:0,dirty:true,others:new Map(),list:null,live:false,connFns:[],closed:false,iv:0};
   const setLive=v=>{if(L.live===v)return;L.live=v;L.connFns.forEach(f=>{try{f(v);}catch(e){}});};
   const drop=id=>{const o=L.others.get(id);if(!o)return;L.others.delete(id);L.list=null;try{o.conn.close();}catch(e){}
@@ -618,9 +632,17 @@ function openLink(role,code){return new Promise((resolve,reject)=>{
     pr.on('open',()=>{if(done)return;done=true;clearTimeout(to);setLive(true);resolve(L);});
     pr.on('connection',conn=>{conn.on('open',()=>{if(!L.others.has(conn.peer))L.others.set(conn.peer,{conn,q:-1,obj:null,last:performance.now()});L.dirty=true;});attach(conn);});
   }else{
-    pr.on('open',()=>{if(done)return;const conn=pr.connect(PEER_PREFIX+code,{serialization:'json',reliable:false});attach(conn);
-      conn.on('open',()=>{L.others.set(conn.peer,{conn,q:-1,obj:null,last:performance.now()});L.dirty=true;setLive(true);if(!done){done=true;clearTimeout(to);resolve(L);}});
-      conn.on('close',()=>{if(!done)fail('NO ANSWER FROM THAT GAME');});});
+    // up to 3 attempts; on failure say whether the host never answered or the networks blocked the link
+    let answered=false;
+    const attempt=n=>{if(done)return;if(n>1&&onStatus)onStatus('STILL TRYING TO REACH ROOM '+code.toUpperCase()+' ('+n+'/3)...');
+      const conn=pr.connect(PEER_PREFIX+code,{serialization:'json',reliable:false});attach(conn);let over=false;
+      const next=()=>{if(over||done)return;over=true;clearTimeout(att);const pc=conn.peerConnection;if(pc&&pc.remoteDescription)answered=true;
+        try{conn.close();}catch(e){}L.others.delete(conn.peer);
+        if(n<3)setTimeout(()=>attempt(n+1),400);else fail(answered?'YOUR NETWORKS BLOCKED THE CONNECTION':'THE HOST ISN\'T ANSWERING - IS THEIR SCREEN ON?');};
+      conn.on('open',()=>{if(over||done)return;over=true;clearTimeout(att);L.others.set(conn.peer,{conn,q:-1,obj:null,last:performance.now()});L.dirty=true;setLive(true);done=true;resolve(L);});
+      conn.on('close',()=>{if(!over)next();});
+      att=setTimeout(next,n===1?9000:11000);};
+    pr.on('open',()=>{if(done)return;clearTimeout(to);attempt(1);});
   }
   // the room-shaped API the game uses
   L.presence=patch=>{for(const k in patch){if(patch[k]===null)delete L.mine[k];else L.mine[k]=patch[k];}L.dirty=true;L.selfObj=null;L.list=null;return Promise.resolve();};
@@ -635,11 +657,11 @@ async function hostGame(){if(netBusy)return;netBusy=true;toast('OPENING A ROOM..
     try{L=await openLink('host',code);}catch(e){netErr=String(e);if(netErr!=='CODE IN USE')break;}}
   netBusy=false;toasts.length=0;
   if(!L){toast('COULD NOT HOST: '+netErr,'#ff6b6b',5);return;}
-  ROOM=GROOM=L;L.onConnection(c=>{roomLive=c;});netErr='';
-  NET='host';roomCode=code;resetSlots();hostEvents=[];state='lobby';advT=0;SFX.blip();
+  ROOM=GROOM=L;L.onConnection(c=>{roomLive=c;});netErr='';keepAwake(true);
+  NET='host';roomCode=code;resetSlots();hostEvents=[];state='lobby';advT=0;SFX.blip();toast('KEEP THIS SCREEN ON WHILE FRIENDS JOIN','#ffd23f',4);
   try{history.replaceState(null,'',location.pathname+'?room='+code.toUpperCase()+(NETQ.get('peerhost')?'&peerhost='+NETQ.get('peerhost'):''));}catch(e){}}
-async function joinGame(code){if(netBusy)return;netBusy=true;toast('JOINING ROOM '+code.toUpperCase()+'...','#ffd23f',16);let L=null;
-  try{L=await openLink('client',code);}catch(e){netErr=String(e);}
+async function joinGame(code){if(netBusy)return;netBusy=true;toast('JOINING ROOM '+code.toUpperCase()+'...','#ffd23f',40);let L=null;
+  try{L=await openLink('client',code,m=>{toasts.length=0;toast(m,'#ffd23f',40);});}catch(e){netErr=String(e);}
   netBusy=false;toasts.length=0;
   if(!L){toast('COULD NOT JOIN '+code.toUpperCase()+': '+netErr,'#ff6b6b',5);return;}
   ROOM=GROOM=L;L.onConnection(c=>{roomLive=c;});netErr='';
@@ -704,7 +726,7 @@ function openGames(){if(!ROOM)return[];let ps=lobbyList();const out=[];
   for(const p of ps){if(p.sameTab)continue;const gm=p.presence&&p.presence.g;if(!gm||typeof gm!=='object'||typeof gm.c!=='string'||!/^[a-z]{4}$/.test(gm.c))continue;out.push({code:gm.c,n:num(gm.n),st:num(gm.st),by:p.by||''});}
   resolveNames(out.map(o=>o.by));return out.slice(0,5);}
 function leaveOnline(msg){
-  if(ROOM){try{ROOM.close();}catch(e){}}ROOM=null;roomLive=false;
+  if(ROOM){try{ROOM.close();}catch(e){}}ROOM=null;roomLive=false;keepAwake(false);
   GROOM=null;roomCode='';NET='off';state='menu';myJoin={};players=[];escMenu=false;resetSlots();if(msg)toast(msg,'#ffd23f',3);}
 function pushEv(to,k,a=0,b=0,c=0){if(NET!=='host')return;hostEvents.push([++evId,to,k,Math.round(a),Math.round(b),Math.round(c)]);if(hostEvents.length>32)hostEvents.shift();}
 const TYPEC={open:'o',human:'h',cpu:'c',remote:'r'},TYPED={o:'open',h:'human',c:'cpu',r:'remote'};
