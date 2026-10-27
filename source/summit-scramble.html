@@ -311,7 +311,7 @@ function stageChunk(st){const rows=st.rows.map(r=>r.slice()),cv=st.cv.map(r=>r.s
   return {w,rows,cv};}
 
 // ============================================================ audio
-const BUILD={v:22,where:'CLAUDE',date:''};
+const BUILD={v:23,where:'CLAUDE',date:''};
 let AC=null,muted=false;
 function audioInit(){if(!AC){try{AC=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(AC&&AC.state==='suspended')AC.resume().catch(()=>{});}
 function tone(f0,f1,dur,type='square',vol=0.04,delay=0){if(!AC||muted)return;const t=AC.currentTime+delay;const o=AC.createOscillator(),gn=AC.createGain();o.type=type;o.frequency.setValueAtTime(f0,t);o.frequency.exponentialRampToValueAtTime(Math.max(20,f1),t+dur);gn.gain.setValueAtTime(vol,t);gn.gain.exponentialRampToValueAtTime(0.0001,t+dur);o.connect(gn).connect(AC.destination);o.start(t);o.stop(t+dur+0.02);}

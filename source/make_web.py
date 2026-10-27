@@ -57,7 +57,9 @@ SHIM = r"""
 const NETQ=new URLSearchParams(location.search);
 const PEER_PREFIX='summitscramble-v1-';
 // Optional: put relay (TURN) servers here if friends on cell data can't connect, e.g. from metered.ca.
-const EXTRA_ICE=[];
+// Chris's ExpressTURN relay (free plan, 1 TB/month): used when phones can't reach each other directly.
+const XT_USER='000000002108434852',XT_PASS=['YBhbBTVlFmAOrbWNuSEgdiY5+FA='];
+const EXTRA_ICE=XT_PASS.map(pw=>({urls:['turn:free.expressturn.com:3478','turn:free.expressturn.com:3478?transport=tcp'],username:XT_USER,credential:pw}));
 let pendingRoom=(NETQ.get('room')||'').toLowerCase().replace(/[^a-z]/g,'').slice(0,4);
 let netBusy=false;
 // Relays for when phones can't reach each other directly (cell data, different home networks, strict routers):
