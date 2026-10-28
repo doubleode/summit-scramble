@@ -95,7 +95,7 @@ async function openLink(role,code,onStatus){const ice=await iceServers();return 
     conn.on('data',d=>{if(!d||typeof d!=='object')return;
       if(d.t==='ping'){try{conn.send({t:'pong',v:d.v});}catch(e){}return;}
       if(d.t==='pong'){const o2=L.others.get(conn.peer);if(o2&&o2.conn===conn&&typeof d.v==='number'){const r=performance.now()-d.v;if(r>=0&&r<10000)o2.rtt=o2.rtt?o2.rtt*0.7+r*0.3:r;}return;}
-      if(d.t!=='p'||typeof d.p!=='object'||!d.p)return;let o=L.others.get(conn.peer);
+      if(d.t!=='p'||typeof d.p!=='object'||!d.p)return;let o=L.others.get(conn.peer);if(o)o.rxN=(o.rxN||0)+1;
       if(!o){if(L.others.size>=12){try{conn.close();}catch(e){}return;}o={conn,q:-1,obj:null,last:0};L.others.set(conn.peer,o);}
       o.last=performance.now();const q=+d.q||0;if(q<=o.q&&o.q-q<1e6)return;o.q=q;
       o.obj=Object.freeze({peer:conn.peer,by:null,isMe:false,sameTab:false,kind:'viewer',guest:false,presence:Object.freeze(d.p),updatedAt:Date.now()});L.list=null;});
@@ -105,7 +105,8 @@ async function openLink(role,code,onStatus){const ice=await iceServers();return 
   let beat=0;
   L.iv=setInterval(()=>{if(L.closed)return;beat++;
     if(L.dirty||beat%15===0){L.dirty=false;sendAll();}
-    if(beat%30===0){const v=performance.now();for(const o of L.others.values())if(o.conn.open){try{o.conn.send({t:'ping',v});}catch(e){}}}
+    if(beat%30===0){const v=performance.now();for(const o of L.others.values()){o.ups=o.rxN||0;o.rxN=0;if(o.conn.open){try{o.conn.send({t:'ping',v});}catch(e){}}}}
+    if(beat%60===5)for(const o of L.others.values())linkStats(o);
     const now=performance.now();for(const [id,o] of L.others){if(o.obj&&now-o.last>7000)drop(id);else if(!o.obj&&now-(o.born||(o.born=now))>15000)drop(id);}},33);
   pr.on('error',e=>{if(!done){fail(errText(e));return;}if(e&&e.type==='peer-unavailable'&&role==='client')noteErr({code:'HOST GONE'});});
   pr.on('disconnected',()=>{if(L.closed)return;setTimeout(()=>{try{if(!L.closed&&pr.disconnected&&!pr.destroyed)pr.reconnect();}catch(e){}},1500);});
@@ -157,6 +158,14 @@ async function goFull(){if(!CAN_FS){homeTip();return;}const el=document.document
   try{await (el.requestFullscreen?el.requestFullscreen({navigationUI:'hide'}):el.webkitRequestFullscreen());}catch(e){homeTip();return;}
   try{await screen.orientation.lock('landscape');}catch(e){}setTimeout(resize,300);}
 document.addEventListener('pointerdown',e=>{if(e.target&&(e.target.id==='tipOk'||e.target.id==='tipX')){e.preventDefault();document.getElementById('tipBox').hidden=true;}});
+function linkStats(o){const pc=o.conn&&o.conn.peerConnection;if(!pc||!pc.getStats)return;
+  pc.getStats().then(rep=>{let pair=null,pid=null;rep.forEach(r=>{if(r.type==='transport'&&r.selectedCandidatePairId)pid=r.selectedCandidatePairId;});if(pid)pair=rep.get(pid);
+    if(!pair)rep.forEach(r=>{if(r.type==='candidate-pair'&&r.state==='succeeded'&&(r.selected||r.nominated)&&!pair)pair=r;});if(!pair)return;
+    const lc=rep.get(pair.localCandidateId),rc=rep.get(pair.remoteCandidateId),lt=lc&&lc.candidateType,rt=rc&&rc.candidateType;
+    o.kind=(lt==='relay'||rt==='relay')?'RELAY':(lt==='host'&&rt==='host')?'LAN':'DIRECT';}).catch(()=>{});}
+function peerKind(peer){const L=GROOM;if(!L||!L.others)return '';const o=L.others.get(peer);return o&&o.kind||'';}
+function netInfo(){const L=GROOM;if(!L||!L.others)return null;const os=[...L.others.values()];let skipped=0,ups=0;for(const o of os){skipped+=o.skipped||0;ups+=o.ups||0;}
+  const h=L.role==='client'?os[0]:null;return {role:L.role,rtt:h?h.rtt||0:0,kind:h?h.kind||'':'',ups:L.role==='client'?(h?h.ups||0:0):(os.length?Math.round(ups/os.length):null),skipped};}
 function peerRtt(peer){const L=GROOM;if(!L||!L.others)return 0;const o=L.others.get(peer);return o&&o.rtt||0;}
 function myRtt(){const L=GROOM;if(!L||L.role!=='client'||!L.others)return 0;for(const o of L.others.values())return o.rtt||0;return 0;}
 function pingText(){const L=GROOM;if(!L||!L.others)return null;let ms=0;

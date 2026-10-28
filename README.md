@@ -24,3 +24,7 @@ python3 source/make_web.py
 ## Full screen on iPhone
 
 Open the game in Safari, tap Share, then **Add to Home Screen**, and launch it from the new icon.
+
+## Test copies
+
+`test/v15/` and `test/v21/` are older builds kept temporarily to compare online sync against the current version. Everyone in a game must use the same link.
